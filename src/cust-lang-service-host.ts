@@ -1,6 +1,9 @@
 import ts from 'typescript';
 import {CustCompilerHost} from './cust-compiler-host';
 
+/**
+ * Delegates all functionality to either ts.Program or ts.CompilerHost (aka @see CustCompilerHost).
+ */
 export class CustLangServiceHost implements ts.LanguageServiceHost {
 	constructor(protected compilerHost: CustCompilerHost, protected program: ts.Program) {
 	}
@@ -8,9 +11,11 @@ export class CustLangServiceHost implements ts.LanguageServiceHost {
 	public getCompilationSettings(): ts.CompilerOptions {
 		return this.program.getCompilerOptions();
 	}
+
 	public getCurrentDirectory(): string {
 		return this.program.getCurrentDirectory();
 	}
+
 	public getDefaultLibFileName(options: ts.CompilerOptions): string {
 		return this.compilerHost.getDefaultLibFileName(options);
 	}

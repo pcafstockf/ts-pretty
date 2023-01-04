@@ -1,6 +1,11 @@
 import {existsSync, realpathSync} from 'fs';
 import ts, {TextChange} from 'typescript';
 
+/**
+ * CompilerHost which loads sources from disk the first time, but performs in memory updates and retrieval.
+ * It is also enhanced to make the implementation of @CustLangServiceHost easier by allowing versioned writes (aka updates) of a source file.
+ * Thanks to ts-morph, prettier-plugin-organize-imports, and the TypeScript team for helping me finally wrap my head around CompilerHost/LanguageServiceHost
+ */
 export class CustCompilerHost implements ts.CompilerHost {
 	constructor(options: ts.CompilerOptions) {
 		this.files = new Map<string, string>();
@@ -14,31 +19,39 @@ export class CustCompilerHost implements ts.CompilerHost {
 	public getNewLine(): string {
 		return ts.sys.newLine;
 	}
+
 	public getEnvironmentVariable(name: string): string | undefined {
 		return process.env[name];
 	}
+
 	public getDefaultLibFileName(options: ts.CompilerOptions): string {
 		return ts.getDefaultLibFileName(options);
 	}
+
 	public useCaseSensitiveFileNames(): boolean {
 		return ts.sys.useCaseSensitiveFileNames;
 	}
+
 	public getCanonicalFileName(fileName: string): string {
 		if (existsSync(fileName))
 			fileName = realpathSync(fileName);
-		return this.useCaseSensitiveFileNames() ? fileName : fileName.toLowerCase()
+		return this.useCaseSensitiveFileNames() ? fileName : fileName.toLowerCase();
 	}
+
 	public getDirectories(path: string): string[] {
 		return ts.sys.getDirectories(path);
 	}
+
 	public getCurrentDirectory(): string {
 		return ts.sys.getCurrentDirectory();
 	}
+
 	public fileExists(fileName: string): boolean {
 		if (this.files.has(fileName))
 			return true;
 		return ts.sys.fileExists(fileName);
 	}
+
 	public readFile(fileName: string): string | undefined {
 		if (this.files.has(fileName))
 			return this.files.get(fileName);
@@ -47,6 +60,7 @@ export class CustCompilerHost implements ts.CompilerHost {
 			this.files.set(fileName, content);
 		return content;
 	}
+
 	public getSourceFile(fileName: string, languageVersionOrOptions: ts.ScriptTarget | ts.CreateSourceFileOptions, onError?: (message: string) => void, shouldCreateNewSourceFile?: boolean): ts.SourceFile | undefined {
 		if (this.sourceFiles.has(fileName))
 			return this.sourceFiles.get(fileName);
@@ -58,6 +72,7 @@ export class CustCompilerHost implements ts.CompilerHost {
 		}
 		return undefined;
 	}
+
 	public writeFile(fileName: string, text: string, writeByteOrderMark?: boolean, onError?: ((message: string) => void) | undefined, sourceFiles?: readonly ts.SourceFile[] | undefined, data?: ts.WriteFileCallbackData | undefined): void {
 		this.files.set(fileName, text);
 		if (this.sourceFiles.has(fileName)) {
@@ -81,6 +96,9 @@ export class CustCompilerHost implements ts.CompilerHost {
 		return '1';
 	}
 
+	/**
+	 * Helper method to apply text changes to a file and update it
+	 */
 	public applyTextChanges(fileName: string, textChanges: ReadonlyArray<TextChange>): string {
 		let newText = this.readFile(fileName)!;
 		textChanges.slice(0).sort((a, b) => b.span.start - a.span.start).forEach((textChange) => {

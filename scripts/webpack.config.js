@@ -1,5 +1,6 @@
 const path = require('path');
 const nodeExternals = require('webpack-node-externals');
+
 const tsConfig = './tsconfig.app.json';
 
 module.exports = {
@@ -29,7 +30,9 @@ module.exports = {
 	},
 	plugins: [
 	],
-	externalsPresets: { node: true },
+	externalsPresets: {
+		node: true
+	},
 	externals: [nodeExternals({
 		allowlist: ['json5', 'lodash/cloneDeep', 'lodash/merge', 'tslib', 'uuid']
 	})],

@@ -1,28 +1,27 @@
 // noinspection JSUnusedGlobalSymbols
 
-import {existsSync} from 'fs';
-import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
-import { randomUUID } from 'crypto'
-// import {cloneDeep as lodashCloneDeep, merge as lodashMerge} from 'lodash';
+import * as fs from 'fs';
+import {randomUUID} from 'crypto';
+import {parse as json5Parse} from 'json5';
 import cloneDeep from 'lodash/cloneDeep';
 import merge from 'lodash/merge';
-import {parse as json5Parse} from 'json5';
+import ts from 'typescript';
 import type {Parser, Printer} from 'prettier';
 import {AstPath, Doc, format, ParserOptions, SupportOption} from 'prettier';
-import ts, {OrganizeImportsMode, SourceFile, SyntaxKind} from 'typescript';
 import {CustCompilerHost} from './cust-compiler-host';
 import {CustLangServiceHost} from './cust-lang-service-host';
 
 
 export const DefaultFormatCodeSettings: ts.FormatCodeSettings = {
 	baseIndentSize: 0,
-	newLineCharacter: '\n',
+	newLineCharacter: os.EOL,
 	// Space takes up at least twice as much disk space as a tab :-)
-	// If you really want to see two 'spaces', use a tab and set indentSize to 2 in your editor
+	// If you really want to see two 'spaces', use a tab and set indentSize/width to 2 in your editor
 	convertTabsToSpaces: false,
-	tabSize: 4,
-	indentSize: 4,
+	tabSize: 1,
+	indentSize: 1,
 	indentStyle: ts.IndentStyle.Smart,
 	trimTrailingWhitespace: true,
 	insertSpaceAfterCommaDelimiter: true,
@@ -149,10 +148,10 @@ class TypeScriptParser {
 			delete format.convertTabsToSpaces;
 		// noinspection SuspiciousTypeOfGuard
 		if (typeof options.bracketSpacing === 'boolean')
-			format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets =  options.bracketSpacing;
+			format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets = options.bracketSpacing;
 
 		if (options.tsbTsFormat) {
-			if (! this.formatOverrides) {
+			if (!this.formatOverrides) {
 				const txt = fs.readFileSync(options.tsbTsFormat, 'utf8');
 				this.formatOverrides = json5Parse(txt);
 			}
@@ -175,7 +174,7 @@ class TypeScriptParser {
 	 * We set the flag on all StringLiteral nodes in the source file, *and* patch ts.getLiteralText to ignore the sourceFile text *when* getting the text for a StringLiteral.
 	 * This results in StringLiterals being printed from the StringLiteral node itself rather than from the actual SourceFile text.
 	 */
-	protected tsPrintSourceFile(sourceFile: SourceFile, options: ParserOptions<TscNode> & PluginOptions) {
+	protected tsPrintSourceFile(sourceFile: ts.SourceFile, options: ParserOptions<TscNode> & PluginOptions) {
 		const printer = ts.createPrinter();
 		let singleQuote: boolean | undefined;
 		// noinspection SuspiciousTypeOfGuard
@@ -195,9 +194,10 @@ class TypeScriptParser {
 			else if (options.singleQuote)
 				singleQuote = true;
 		}
+
 		function visitNode(node: ts.Node) {
 			switch (node.kind) {
-				case SyntaxKind.StringLiteral:
+				case ts.SyntaxKind.StringLiteral:
 					(node as any).singleQuote = singleQuote;
 					break;
 				default:
@@ -205,14 +205,15 @@ class TypeScriptParser {
 			}
 			ts.forEachChild(node, visitNode);
 		}
+
 		if (typeof singleQuote === 'boolean')
 			visitNode(sourceFile as ts.Node);
 		const getLiteralTextWrapper = (ts as any).getLiteralText;
-		(ts as any).getLiteralText = function getLiteralText(node: ts.Node, sourceFile: SourceFile, flags: number) {
-			if (node.kind === SyntaxKind.StringLiteral)
+		(ts as any).getLiteralText = function getLiteralText(node: ts.Node, sourceFile: ts.SourceFile, flags: number) {
+			if (node.kind === ts.SyntaxKind.StringLiteral)
 				return getLiteralTextWrapper(node, null, flags);
 			return getLiteralTextWrapper(node, sourceFile, flags);
-		}
+		};
 		try {
 			return printer.printNode(ts.EmitHint.SourceFile, sourceFile!, sourceFile!);
 		}
@@ -249,7 +250,7 @@ class TypeScriptParser {
 		const host = new CustCompilerHost(configOptions.options);
 		let filePath = options.filepath;
 		if (filePath) {
-			if (existsSync(filePath))
+			if (fs.existsSync(filePath))
 				filePath = host.getCanonicalFileName(filePath);
 		}
 		else
@@ -261,7 +262,7 @@ class TypeScriptParser {
 		host.writeFile(filePath, cleanedText);
 		if (options.tsbOptimizeImports) {
 			if ((!cleanedText.includes('// organize-imports-ignore')) && (!cleanedText.includes('// tslint:disable:ordered-imports'))) {
-				const fileChanges = languageService.organizeImports({fileName: filePath, type: 'file', mode: OrganizeImportsMode.All}, formatOpts, {});
+				const fileChanges = languageService.organizeImports({fileName: filePath, type: 'file', mode: ts.OrganizeImportsMode.All}, formatOpts, {});
 				fileChanges.forEach(v => host.applyTextChanges(v.fileName, v.textChanges));
 			}
 		}
@@ -357,21 +358,6 @@ export const languages = [
 		parsers: ['espree', 'babel', 'meriyah', 'acorn'],
 	},
 	{
-		name: 'Flow',
-		type: 'programming',
-		group: 'JavaScript',
-		tmScope: 'source.js',
-		aceMode: 'javascript',
-		codemirrorMode: 'javascript',
-		codemirrorMimeType: 'text/javascript',
-		extensions: ['.js.flow'],
-		aliases: [],
-		interpreters: ['node'],
-		linguistLanguageId: 183,
-		vscodeLanguageIds: ['javascript'],
-		parsers: ['babel', 'flow', 'babel-flow']
-	},
-	{
 		name: 'JSX',
 		type: 'programming',
 		group: 'JavaScript',
@@ -382,12 +368,12 @@ export const languages = [
 		extensions: ['.jsx'],
 		linguistLanguageId: 178,
 		vscodeLanguageIds: ['javascriptreact'],
-		parsers: ['babel', 'flow', 'espree', 'babel-flow'],
+		parsers: ['babel', 'espree'],
 	},
 ];
 const knownParsers = new Set<string>(languages.map(l => l.parsers).flat(10));
 
-const { parsers: babelParsers } = require('prettier/parser-babel');
+const {parsers: babelParsers} = require('prettier/parser-babel');
 const builtIns = {
 	parsers: {
 		'builtin-espree': {
@@ -396,23 +382,17 @@ const builtIns = {
 		'builtin-meriyah': {
 			...require('prettier/parser-meriyah').parsers.meriyah
 		},
-		'builtin-flow': {
-			...require('prettier/parser-flow').parsers.flow
-		},
 		'builtin-typescript': {
 			...require('prettier/parser-typescript').parsers.typescript
 		},
 		'builtin-babel': {
 			...babelParsers.babel
 		},
-		'builtin-babel-flow': {
-			...babelParsers['babel-flow']
-		},
 		'builtin-babel-ts': {
 			...babelParsers['babel-ts']
 		}
 	}
-}
+};
 
 const parserInstance = new TypeScriptParser();
 export const parsers = Array.from(knownParsers).reduce((parsers, parserName) => {
@@ -449,6 +429,6 @@ export const parsers = Array.from(knownParsers).reduce((parsers, parserName) => 
 			return parserInstance.parse(text, options);
 		},
 		astFormat: 'tsc-ast'
-	}
+	};
 	return parsers;
 }, {} as Record<string, Parser<TscNode>>);

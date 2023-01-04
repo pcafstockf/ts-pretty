@@ -4,7 +4,7 @@
 		"**/*.spec.*"
 	],
 	"helpers": [
-		"../../scripts/jasmine-console-helpers.js"
+		"../scripts/jasmine-console-helpers.js"
 	],
 	"stopSpecOnExpectationFailure": false,
 	"random": true

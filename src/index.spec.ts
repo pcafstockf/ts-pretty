@@ -4,10 +4,10 @@ import {format} from 'prettier';
 
 describe('ts-pretty', () => {
 	let originalTimeout = jasmine.DEFAULT_TIMEOUT_INTERVAL;
-	beforeAll(function() {
+	beforeAll(function () {
 		jasmine.DEFAULT_TIMEOUT_INTERVAL = 60000;
 	});
-	afterAll(function() {
+	afterAll(function () {
 		jasmine.DEFAULT_TIMEOUT_INTERVAL = originalTimeout;
 	});
 
@@ -15,7 +15,7 @@ describe('ts-pretty', () => {
 		const inputPath = './fixtures/input/js-sample.js';
 		const input = fs.readFileSync(inputPath, 'utf8');
 		const txt = format(input, {
-			parser: "ts-pretty",
+			parser: 'ts-pretty',
 			plugins: [require('../src')]
 		});
 		expect(txt.split(/\r?\n/).length).toEqual(20);
@@ -26,12 +26,12 @@ describe('ts-pretty', () => {
 		const ugly = format(input, {
 			tsbUseBuiltins: true,
 			tsbDisable: true,
-			parser: "espree",
+			parser: 'espree',
 			plugins: [require('../src')]
 		} as any);
 		const pretty = format(input, {
 			tsbUseBuiltins: true,
-			parser: "espree",
+			parser: 'espree',
 			plugins: [require('../src')]
 		} as any);
 		expect(ugly).not.toEqual(pretty);
@@ -47,7 +47,7 @@ describe('ts-pretty', () => {
 			singleQuote: false,
 			useTabs: true,
 			endOfLine: os.EOL === '\n' ? 'crlf' : 'lf', // Do the opposite of the default
-			parser: "typescript",
+			parser: 'typescript',
 			plugins: [require('../src')]
 		} as any);
 		expect(nonOptimized.trim().split(/\r?\n/).length).toEqual(16);
@@ -66,13 +66,13 @@ describe('ts-pretty', () => {
 			useTabs: false,
 			endOfLine: os.EOL === '\n' ? 'lf' : 'crlf', // Do the default (for this os).
 			singleQuote: true,
-			parser: "typescript",
+			parser: 'typescript',
 			plugins: [require('../src')]
 		} as any);
 		expect(optimized.trim().split(/\r?\n/).length).toEqual(15);
 		expect(optimized).not.toContain('import ');
 		expect(optimized).toContain('        try ');
-		expect(optimized).toContain("== 'bar')");  // We requested single quotes (the sample is double).
+		expect(optimized).toContain('== \'bar\')');  // We requested single quotes (the sample is double).
 		if (os.EOL === '\n')
 			expect(/\r\n/.test(optimized)).toBeFalse();
 		else
