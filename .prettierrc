@@ -1,0 +1,9 @@
+{
+  "tabWidth": 1,
+  "useTabs": true,
+  "singleQuote": true,
+  "trailingComma": "none",
+  "semi": true,
+  "tsbOptimizeImports": true,
+  "tsbUseBuiltins": false
+}

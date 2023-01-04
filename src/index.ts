@@ -1,16 +1,21 @@
 // noinspection JSUnusedGlobalSymbols
 
-import * as os from 'os';
+import {existsSync} from 'fs';
 import * as fs from 'fs';
 import * as path from 'path';
-import {cloneDeep as lodashCloneDeep, merge as lodashMerge} from 'lodash';
+import { randomUUID } from 'crypto'
+// import {cloneDeep as lodashCloneDeep, merge as lodashMerge} from 'lodash';
+import cloneDeep from 'lodash/cloneDeep';
+import merge from 'lodash/merge';
 import {parse as json5Parse} from 'json5';
 import type {Parser, Printer} from 'prettier';
 import {AstPath, Doc, format, ParserOptions, SupportOption} from 'prettier';
-import {ts, Project, FormatCodeSettings, QuoteKind, IndentationText, SourceFile} from 'ts-morph';
-import {IndentStyle, NewLineKind, SemicolonPreference} from 'typescript';
+import ts, {OrganizeImportsMode, SourceFile, SyntaxKind} from 'typescript';
+import {CustCompilerHost} from './cust-compiler-host';
+import {CustLangServiceHost} from './cust-lang-service-host';
 
-export const DefaultFormatCodeSettings: FormatCodeSettings = {
+
+export const DefaultFormatCodeSettings: ts.FormatCodeSettings = {
 	baseIndentSize: 0,
 	newLineCharacter: '\n',
 	// Space takes up at least twice as much disk space as a tab :-)
@@ -18,7 +23,7 @@ export const DefaultFormatCodeSettings: FormatCodeSettings = {
 	convertTabsToSpaces: false,
 	tabSize: 4,
 	indentSize: 4,
-	indentStyle: IndentStyle.Smart,
+	indentStyle: ts.IndentStyle.Smart,
 	trimTrailingWhitespace: true,
 	insertSpaceAfterCommaDelimiter: true,
 	insertSpaceAfterSemicolonInForStatements: true,
@@ -38,8 +43,7 @@ export const DefaultFormatCodeSettings: FormatCodeSettings = {
 	placeOpenBraceOnNewLineForControlBlocks: false,
 	insertSpaceBeforeTypeAnnotation: false,
 	indentMultiLineObjectLiteralBeginningOnBlankLine: true,
-	semicolons: SemicolonPreference.Insert,
-	ensureNewLineAtEndOfFile: true,
+	semicolons: ts.SemicolonPreference.Insert
 };
 
 interface TscNode {
@@ -103,18 +107,15 @@ export const options: Record<keyof PluginOptions, SupportOption> = {
 
 type Writeable<T> = { -readonly [P in keyof T]: T[P] };
 
-
 class TypeScriptParser {
 	readonly astFormat = 'tsc-ast';
 
 	constructor() {
 	}
-	// project?: Project;
-	tmpDir?: string;
-	formatOverrides?: FormatCodeSettings;
+	formatOverrides?: ts.FormatCodeSettings;
 
-	protected makeFormatCodeSettings(options: ParserOptions<TscNode> & PluginOptions): FormatCodeSettings {
-		const format = lodashCloneDeep(DefaultFormatCodeSettings) as Writeable<FormatCodeSettings>;
+	protected makeFormatCodeSettings(options: ParserOptions<TscNode> & PluginOptions): ts.FormatCodeSettings {
+		const format = cloneDeep(DefaultFormatCodeSettings) as Writeable<ts.FormatCodeSettings>;
 		switch (options.endOfLine) {
 			case 'crlf':
 				format.newLineCharacter = '\r\n';
@@ -132,13 +133,18 @@ class TypeScriptParser {
 		}
 		// noinspection SuspiciousTypeOfGuard
 		if (typeof options.semi === 'boolean')
-			format.semicolons = !options.semi ? SemicolonPreference.Remove : SemicolonPreference.Insert;
+			format.semicolons = !options.semi ? ts.SemicolonPreference.Remove : ts.SemicolonPreference.Insert;
 		// noinspection SuspiciousTypeOfGuard
 		if (typeof options.tabWidth === 'number')
-			format.tabSize = options.tabWidth;
+			format.indentSize = format.tabSize = options.tabWidth;
 		// noinspection SuspiciousTypeOfGuard
-		if (typeof options.useTabs === 'boolean')
+		if (typeof options.useTabs === 'boolean') {
 			format.convertTabsToSpaces = !options.useTabs;
+			if (format.convertTabsToSpaces)
+				// noinspection SuspiciousTypeOfGuard
+				if (typeof options.tabWidth === 'number')
+					format.indentSize = format.tabSize = 1; // ts always uses a single tab (it's up to the editor to display the tab as x number of spaces).
+		}
 		else
 			delete format.convertTabsToSpaces;
 		// noinspection SuspiciousTypeOfGuard
@@ -150,87 +156,123 @@ class TypeScriptParser {
 				const txt = fs.readFileSync(options.tsbTsFormat, 'utf8');
 				this.formatOverrides = json5Parse(txt);
 			}
-			lodashMerge(format, this.formatOverrides);
+			merge(format, this.formatOverrides);
 		}
 		return format;
+	}
+
+	/**
+	 * THIS METHOD IS A HACK!
+	 * I would really like to find a better way!
+	 * The ts.Printer builtin to TypeScript does *mostly* what we want, but there is an existing (and realistic)
+	 * prettier expectation, that users can specify single vs double quote transformations.
+	 * But bottom line is that ts.Printer simply does not support that.
+	 * Worse, the hack we do use is not "public".  Hence, we isolate it into this one method.
+	 * StringLiterals have an internal property called 'singleQuote'.
+	 * Unfortunately, the Printer also has "optimizations" where it re-uses the text of the source file whenever it can.
+	 * This "optimization" prevents us from converting quotes in some cases (mostly in import statements).
+	 * So...
+	 * We set the flag on all StringLiteral nodes in the source file, *and* patch ts.getLiteralText to ignore the sourceFile text *when* getting the text for a StringLiteral.
+	 * This results in StringLiterals being printed from the StringLiteral node itself rather than from the actual SourceFile text.
+	 */
+	protected tsPrintSourceFile(sourceFile: SourceFile, options: ParserOptions<TscNode> & PluginOptions) {
+		const printer = ts.createPrinter();
+		let singleQuote: boolean | undefined;
+		// noinspection SuspiciousTypeOfGuard
+		if (typeof options.singleQuote === 'boolean')
+			singleQuote = options.singleQuote;
+		else if (options.singleQuote === null || options.singleQuote === '0' || options.singleQuote === 0)
+			singleQuote = false;
+		else {
+			// noinspection SuspiciousTypeOfGuard
+			if (typeof options.singleQuote === 'string') {
+				const s = (options.singleQuote as string).toLowerCase();
+				if (s === 'false' || s === 'null' || s === 'no')
+					singleQuote = false;
+				else if (options.singleQuote)
+					singleQuote = true;
+			}
+			else if (options.singleQuote)
+				singleQuote = true;
+		}
+		function visitNode(node: ts.Node) {
+			switch (node.kind) {
+				case SyntaxKind.StringLiteral:
+					(node as any).singleQuote = singleQuote;
+					break;
+				default:
+					break;
+			}
+			ts.forEachChild(node, visitNode);
+		}
+		if (typeof singleQuote === 'boolean')
+			visitNode(sourceFile as ts.Node);
+		const getLiteralTextWrapper = (ts as any).getLiteralText;
+		(ts as any).getLiteralText = function getLiteralText(node: ts.Node, sourceFile: SourceFile, flags: number) {
+			if (node.kind === SyntaxKind.StringLiteral)
+				return getLiteralTextWrapper(node, null, flags);
+			return getLiteralTextWrapper(node, sourceFile, flags);
+		}
+		try {
+			return printer.printNode(ts.EmitHint.SourceFile, sourceFile!, sourceFile!);
+		}
+		finally {
+			(ts as any).getLiteralText = getLiteralTextWrapper;
+		}
 	}
 
 	parse(text: string, options: ParserOptions<TscNode> & PluginOptions): TscNode {
 		// Remember, each file can potentially have different options.
 		const formatOpts = this.makeFormatCodeSettings(options);
-		// if (!this.project) {
-			let searchDir = './';
-			let tsConfigName = undefined;
-			if (process.env.TS_NODE_PROJECT) {
-				searchDir = path.dirname(process.env.TS_NODE_PROJECT);
-				tsConfigName = path.basename(process.env.TS_NODE_PROJECT);
-			}
-			if (options.tsbTsconfig) {
-				searchDir = path.dirname(options.tsbTsconfig);
-				tsConfigName = path.basename(options.tsbTsconfig);
-			}
-			const tsConfig = ts.findConfigFile(
-				searchDir,
-				ts.sys.fileExists,
-				tsConfigName
-			);
-			let indentationText = IndentationText.Tab;
-			if (formatOpts.convertTabsToSpaces)
-				switch (formatOpts.tabSize) {
-					case 2:
-						indentationText = IndentationText.TwoSpaces;
-						break;
-					case 4:
-						indentationText = IndentationText.FourSpaces;
-						break;
-					case 8:
-						indentationText = IndentationText.EightSpaces;
-						break;
-					default:
-						break;
-				}
-			// noinspection SuspiciousTypeOfGuard
-			const project = new Project({
-				tsConfigFilePath: tsConfig,
-				skipAddingFilesFromTsConfig: true,
-				manipulationSettings: {
-					quoteKind: typeof options.singleQuote === 'boolean' ? options.singleQuote ? QuoteKind.Single : QuoteKind.Double : QuoteKind.Single,
-					newLineKind: formatOpts.newLineCharacter === '\n' ? NewLineKind.LineFeed : formatOpts.newLineCharacter === '\r\n' ? NewLineKind.CarriageReturnLineFeed : undefined,
-					indentationText: indentationText,
-					useTrailingCommas: options.trailingComma !== 'none'
-				}
-			});
-		// }
-		// I kind of think we will always have a filepath set in the real world, but we do not during testing, and I guess it's possible in other scenarios if the prettier API is being invoked programmatically.
-		let filePath = options.filepath;
-		if (! filePath) {
-			// Hash the input to a name.  In truth, this probably doesn't matter since even if we had a name collision, we will update the content anyway.
-			let h = 0;
-			for(let i = 0; i < text.length; i++)
-				h = Math.imul(31, h) + text.charCodeAt(i) | 0;
-			if (! this.tmpDir)
-				this.tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-pretty-'), 'utf8');
-			filePath = path.join(this.tmpDir, String(h) + '.ts');
-			if (! fs.existsSync(filePath))
-				fs.writeFileSync(filePath, text, 'utf8');
+
+		let searchDir = './';
+		let tsConfigName = undefined;
+		if (process.env.TS_NODE_PROJECT) {
+			searchDir = path.dirname(process.env.TS_NODE_PROJECT);
+			tsConfigName = path.basename(process.env.TS_NODE_PROJECT);
 		}
-		let sf = project.getSourceFile(filePath);
-		if (!sf)
-			sf = project.addSourceFileAtPath(filePath);
-		if (options.tsbUseBuiltins)
-			sf = sf.replaceWithText(text) as SourceFile;
-		// print is what cleans up the quoting, braces, etc.
-		sf = sf.replaceWithText(sf.print()) as SourceFile;
-		if (options.tsbOptimizeImports)
-			sf = sf.organizeImports(formatOpts);
-		// apply the formatting that will be used by getFullText
-		sf.formatText(formatOpts);
+		if (options.tsbTsconfig) {
+			searchDir = path.dirname(options.tsbTsconfig);
+			tsConfigName = path.basename(options.tsbTsconfig);
+		}
+		const tsConfig = ts.findConfigFile(
+			searchDir,
+			ts.sys.fileExists,
+			tsConfigName
+		);
+		const configFile = ts.readConfigFile(tsConfig!, ts.sys.readFile);
+		const configOptions = ts.parseJsonConfigFileContent(
+			configFile.config,
+			ts.sys,
+			path.dirname(tsConfig!)
+		);
+		const host = new CustCompilerHost(configOptions.options);
+		let filePath = options.filepath;
+		if (filePath) {
+			if (existsSync(filePath))
+				filePath = host.getCanonicalFileName(filePath);
+		}
+		else
+			filePath = path.join(configOptions.options.baseUrl ?? './', randomUUID() + '.ts');
+		host.writeFile(filePath, text);
+		const languageService = ts.createLanguageService(new CustLangServiceHost(host, ts.createProgram([filePath], configOptions.options, host)));
+		let sourceFile = host.getSourceFile(filePath, configOptions.options.target ?? ts.ScriptTarget.Latest);
+		let cleanedText = this.tsPrintSourceFile(sourceFile!, options);
+		host.writeFile(filePath, cleanedText);
+		if (options.tsbOptimizeImports) {
+			if ((!cleanedText.includes('// organize-imports-ignore')) && (!cleanedText.includes('// tslint:disable:ordered-imports'))) {
+				const fileChanges = languageService.organizeImports({fileName: filePath, type: 'file', mode: OrganizeImportsMode.All}, formatOpts, {});
+				fileChanges.forEach(v => host.applyTextChanges(v.fileName, v.textChanges));
+			}
+		}
+		const textChanges = languageService.getFormattingEditsForDocument(filePath, formatOpts);
+		const finalText = host.applyTextChanges(filePath, textChanges);
 		return {
 			type: 'tsc-ast',
 			source: text,
 			start: 0,
 			end: text.length,
-			body: sf.getFullText()
+			body: finalText
 		};
 	}
 

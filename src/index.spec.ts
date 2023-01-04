@@ -38,11 +38,11 @@ describe('ts-pretty', () => {
 		expect(ugly.split(/\r?\n/).length).toEqual(27);
 		expect(pretty.split(/\r?\n/).length).toEqual(20);
 	});
-	it('should be cleanup typescript', () => {
+	it('should be able to cleanup typescript', () => {
 		const inputPath = './fixtures/input/ts-sample.ts';
 		const input = fs.readFileSync(inputPath, 'utf8');
 		const nonOptimized = format(input, {
-			tsbUseBuiltins: true,
+			tsbUseBuiltins: false,
 			tsbOptimizeImports: false,
 			singleQuote: false,
 			useTabs: true,
@@ -52,14 +52,14 @@ describe('ts-pretty', () => {
 		} as any);
 		expect(nonOptimized.trim().split(/\r?\n/).length).toEqual(16);
 		expect(nonOptimized).toContain('import ');
-		expect(nonOptimized).toContain('\t\t\t\t\t\tconsole.'); // We requested tabs.
+		expect(nonOptimized).toContain('\t\t\tconsole.'); // We requested tabs.
 		expect(nonOptimized).toContain('("Its bar")');  // We requested double quotes (in the sample this is single).
 		if (os.EOL === '\n')
 			expect(/\r\n/.test(nonOptimized)).toBeTrue();
 		else
 			expect(/\r\n/.test(nonOptimized)).toBeFalse();
 		const optimized = format(input, {
-			tsbUseBuiltins: true,
+			tsbUseBuiltins: false,
 			tsbOptimizeImports: true,
 			tsbTsconfig: './tsconfig.app.json',
 			tsbTsFormat: './fixtures/input/ts-format.json',

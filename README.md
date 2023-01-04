@@ -1,2 +1,4 @@
-# ts-beautifier
-Prettify using native tcs API
+# ts-pretty
+prettier plugin harnessing the TypeScript Compiler API and ts-morph.
+
+
