@@ -10,7 +10,7 @@ Configurable prettier plugin which harnesses the TypeScript Compiler API.
 Opinions vary, but if you share these opinions, this might be the plugin for you.
 * Uniformity matters, but readability trumps uniformity every time.
 * Formatting should **enhance** the readability of a language, not reduce it to a one size fits all formula.
-* Formatting should allow code to be quickly absorbed / scanned, rather than [forcing a careful reading of each line](https://github.com/pcafstockf/ts-pretty/fixtures/one-size-fits-all.md).
+* Formatting should allow code to be quickly absorbed / scanned, rather than [forcing a careful reading of each line](https://github.com/pcafstockf/ts-pretty/blob/master/fixtures/one-size-fits-all.md).
 
 ## Overview
 ts-pretty uses the [TypeScript Compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API) (built into TypeScript itself), to format TypeScript/JavaScript code.
