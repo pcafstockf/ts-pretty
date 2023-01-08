@@ -34,7 +34,7 @@
 	},
 	"homepage": "https://github.com/pcafstockf/ts-pretty#readme",
 	"dependencies": {
-		"json5": "~2.2.2",
+		"json5": "~2.2.3",
 		"lodash": "~4.17.21",
 		"tslib": "~2.4.1"
 	},

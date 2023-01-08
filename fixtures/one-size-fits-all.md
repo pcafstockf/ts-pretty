@@ -1,7 +1,7 @@
 Indentation enhances understanding when doing a quick scan of code (just ask any Python developer :grinning:).  
 When you create run-on statements (based on column width) you risk mis-understandings.
 
-Glance at the code below in a narrow browser tab and then again in a wide one (be sure you can see the far right side this time).
+Glance at the code below in a narrow browser tab, and then **again** in a wide one (be sure you can see the far right side this time).
 ```typescript
 // ... many lines of complex business logic
 try {
