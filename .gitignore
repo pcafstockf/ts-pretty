@@ -11,5 +11,6 @@
 /.nyc_output/
 /coverage/
 /build/
+/dist/
 /Notes.txt
 /package-lock.json

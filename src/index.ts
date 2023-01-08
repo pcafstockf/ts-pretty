@@ -7,7 +7,7 @@ import {randomUUID} from 'crypto';
 import {parse as json5Parse} from 'json5';
 import cloneDeep from 'lodash/cloneDeep';
 import merge from 'lodash/merge';
-import ts from 'typescript';
+import ts, {CompilerOptions, JsxEmit, ModuleDetectionKind, ModuleKind, ModuleResolutionKind, ScriptTarget} from 'typescript';
 import type {Parser, Printer} from 'prettier';
 import {AstPath, Doc, format, ParserOptions, SupportOption} from 'prettier';
 import {CustCompilerHost} from './cust-compiler-host';
@@ -54,53 +54,53 @@ interface TscNode {
 }
 
 export const defaultOptions = {
-	tsbDisable: false,
-	tsbUseBuiltins: false,
-	tsOptimizeImports: false
+	tspDisable: false,
+	tspUseBuiltins: false,
+	tspOrganizeImports: false
 };
 
 
 export interface PluginOptions {
-	tsbDisable?: boolean;
-	tsbUseBuiltins?: boolean;
-	tsbTsconfig?: string;
-	tsbTsFormat?: string;
-	tsbOptimizeImports?: boolean;
+	tspDisable?: boolean;
+	tspUseBuiltins?: boolean;
+	tspTsconfig?: string;
+	tspTsFormat?: string;
+	tspOrganizeImports?: boolean;
 }
 
 export const options: Record<keyof PluginOptions, SupportOption> = {
-	tsbDisable: {
+	tspDisable: {
 		type: 'boolean',
 		category: 'TypeScript',
 		since: '1.16.4',
 		default: false,
-		description: 'ts-pretty will not modify source code',
+		description: 'ts-pretty will not perform any transformations.',
 	},
-	tsbUseBuiltins: {
+	tspUseBuiltins: {
 		type: 'boolean',
 		category: 'TypeScript',
 		since: '1.16.4',
 		default: false,
-		description: 'If true, the builtin parser output will be piped into ts-pretty.',
+		description: 'If true, the previously loaded parser output will be piped into ts-pretty.',
 	},
-	tsbTsconfig: {
+	tspTsconfig: {
 		type: 'path',
 		category: 'TypeScript',
 		since: '1.16.4',
-		description: 'Specify location of a tsconfig.json file (defaults to process.env.TS_NODE_PROJECT if present)',
+		description: 'Filepath to a tsconfig.json file (if not present, defaults to process.env.TS_NODE_PROJECT if present, otherwise ./tsconfig.json, otherwise a hardcoded set of tsconfig options)',
 	},
-	tsbTsFormat: {
+	tspTsFormat: {
 		type: 'path',
 		category: 'TypeScript',
 		since: '1.16.4',
-		description: 'Json5 file containing ts.FormatCodeSettings overrides',
+		description: 'json5 file containing ts.FormatCodeSettings overrides',
 	},
-	tsbOptimizeImports: {
+	tspOrganizeImports: {
 		type: 'boolean',
 		category: 'TypeScript',
 		since: '1.16.4',
 		default: false,
-		description: 'Optimize TypeScript imports',
+		description: 'Organize TypeScript imports using ts.LanguageService.organizeImports',
 	},
 };
 
@@ -150,9 +150,9 @@ class TypeScriptParser {
 		if (typeof options.bracketSpacing === 'boolean')
 			format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets = options.bracketSpacing;
 
-		if (options.tsbTsFormat) {
+		if (options.tspTsFormat) {
 			if (!this.formatOverrides) {
-				const txt = fs.readFileSync(options.tsbTsFormat, 'utf8');
+				const txt = fs.readFileSync(options.tspTsFormat, 'utf8');
 				this.formatOverrides = json5Parse(txt);
 			}
 			merge(format, this.formatOverrides);
@@ -232,35 +232,73 @@ class TypeScriptParser {
 			searchDir = path.dirname(process.env.TS_NODE_PROJECT);
 			tsConfigName = path.basename(process.env.TS_NODE_PROJECT);
 		}
-		if (options.tsbTsconfig) {
-			searchDir = path.dirname(options.tsbTsconfig);
-			tsConfigName = path.basename(options.tsbTsconfig);
+		if (options.tspTsconfig) {
+			searchDir = path.dirname(options.tspTsconfig);
+			tsConfigName = path.basename(options.tspTsconfig);
 		}
-		const tsConfig = ts.findConfigFile(
+		const tsConfigPath = ts.findConfigFile(
 			searchDir,
 			ts.sys.fileExists,
 			tsConfigName
 		);
-		const configFile = ts.readConfigFile(tsConfig!, ts.sys.readFile);
-		const configOptions = ts.parseJsonConfigFileContent(
-			configFile.config,
-			ts.sys,
-			path.dirname(tsConfig!)
-		);
-		const host = new CustCompilerHost(configOptions.options);
+		let tsCompilerOptions: ts.CompilerOptions;
+		if (tsConfigPath) {
+			const configFile = ts.readConfigFile(tsConfigPath!, ts.sys.readFile);
+			const configOptions = ts.parseJsonConfigFileContent(
+				configFile.config,
+				ts.sys,
+				path.dirname(tsConfigPath!)
+			);
+			tsCompilerOptions = configOptions.options;
+		}
+		else {
+			// Very likely not a typescript project, and keep in mind we are not emitting/compiling!
+			// These defaults were taken from a combination of tsc --init and my own speculation about what would be useful for supporting a wide variety of *javascript* code.
+			tsCompilerOptions = {
+				// Set the JavaScript language version for emitted JavaScript and include compatible library declarations.
+				"target": ts.ScriptTarget.ESNext,
+				// Specify what JSX code is generated
+				"jsx": ts.JsxEmit.Preserve,
+				// Enable experimental support for TC39 stage 2 draft decorators.
+				"experimentalDecorators": true,
+				// Control what method is used to detect module-format JS files.
+				"moduleDetection": ts.ModuleDetectionKind.Auto,
+				// Specify what module code is generated.
+				"module": ts.ModuleKind.CommonJS,
+				// Specify how TypeScript looks up a file from a given module specifier.
+				"moduleResolution": ts.ModuleResolutionKind.NodeJs,
+				// Enable importing .json files.
+				"resolveJsonModule": true,
+				// Allow JavaScript files to be a part of your program.
+				"allowJs": true,
+				// disable emitting files from a compilation.
+				"noEmit": true,
+				// Emit additional JavaScript to ease support for importing CommonJS modules.
+				"esModuleInterop": true,
+				// Disable resolving symlinks to their realpath. This correlates to the same flag in node.
+				"preserveSymlinks": true,
+				// Ensure that casing is correct in imports.
+				"forceConsistentCasingInFileNames": true,
+				// Enable all strict type-checking options.
+				"strict": false,
+				// Skip type checking all .d.ts files.
+				"skipLibCheck": true
+			} as ts.CompilerOptions;
+		}
+		const host = new CustCompilerHost(tsCompilerOptions);
 		let filePath = options.filepath;
 		if (filePath) {
 			if (fs.existsSync(filePath))
 				filePath = host.getCanonicalFileName(filePath);
 		}
 		else
-			filePath = path.join(configOptions.options.baseUrl ?? './', randomUUID() + '.ts');
+			filePath = path.join(tsCompilerOptions.baseUrl ?? './', randomUUID() + '.ts');
 		host.writeFile(filePath, text);
-		const languageService = ts.createLanguageService(new CustLangServiceHost(host, ts.createProgram([filePath], configOptions.options, host)));
-		let sourceFile = host.getSourceFile(filePath, configOptions.options.target ?? ts.ScriptTarget.Latest);
+		const languageService = ts.createLanguageService(new CustLangServiceHost(host, ts.createProgram([filePath], tsCompilerOptions, host)));
+		let sourceFile = host.getSourceFile(filePath, tsCompilerOptions.target ?? ts.ScriptTarget.Latest);
 		let cleanedText = this.tsPrintSourceFile(sourceFile!, options);
 		host.writeFile(filePath, cleanedText);
-		if (options.tsbOptimizeImports) {
+		if (options.tspOrganizeImports) {
 			if ((!cleanedText.includes('// organize-imports-ignore')) && (!cleanedText.includes('// tslint:disable:ordered-imports'))) {
 				const fileChanges = languageService.organizeImports({fileName: filePath, type: 'file', mode: ts.OrganizeImportsMode.All}, formatOpts, {});
 				fileChanges.forEach(v => host.applyTextChanges(v.fileName, v.textChanges));
@@ -410,14 +448,14 @@ export const parsers = Array.from(knownParsers).reduce((parsers, parserName) => 
 			else
 				options = parsersInPrettierV2OrOptionsInPrettierV3 as any;
 			const origTxt = text;
-			if (options.tsbUseBuiltins) {
+			if (options.tspUseBuiltins) {
 				text = format(origTxt, {
 					...options,
 					parser: 'builtin-' + parserName,
 					plugins: [builtIns],
 				});
 			}
-			if (options.tsbDisable) {
+			if (options.tspDisable) {
 				return {
 					type: 'tsc-ast',
 					source: origTxt,

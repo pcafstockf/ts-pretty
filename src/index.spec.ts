@@ -24,13 +24,13 @@ describe('ts-pretty', () => {
 		const inputPath = './fixtures/input/js-sample.js';
 		const input = fs.readFileSync(inputPath, 'utf8');
 		const ugly = format(input, {
-			tsbUseBuiltins: true,
-			tsbDisable: true,
+			tspUseBuiltins: true,
+			tspDisable: true,
 			parser: 'espree',
 			plugins: [require('../src')]
 		} as any);
 		const pretty = format(input, {
-			tsbUseBuiltins: true,
+			tspUseBuiltins: true,
 			parser: 'espree',
 			plugins: [require('../src')]
 		} as any);
@@ -42,7 +42,7 @@ describe('ts-pretty', () => {
 		const inputPath = './fixtures/input/ts-sample.ts';
 		const input = fs.readFileSync(inputPath, 'utf8');
 		const nonOptimized = format(input, {
-			tsbUseBuiltins: false,
+			tspUseBuiltins: false,
 			tsbOptimizeImports: false,
 			singleQuote: false,
 			useTabs: true,
@@ -59,7 +59,7 @@ describe('ts-pretty', () => {
 		else
 			expect(/\r\n/.test(nonOptimized)).toBeFalse();
 		const optimized = format(input, {
-			tsbUseBuiltins: false,
+			tspUseBuiltins: false,
 			tsbOptimizeImports: true,
 			tsbTsconfig: './tsconfig.app.json',
 			tsbTsFormat: './fixtures/input/ts-format.json',
