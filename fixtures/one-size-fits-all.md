@@ -18,9 +18,11 @@ Still others, argue that we all have 43" monitors these days.
 
 But what if you are on a smaller screen, or happen to open the file in a smaller portlet / tab?
 
-One size does not fit all.
+One size does not fit all!
 
 It is true that this particular scenario might be prevented by strictly adhering to brace placement.  
-It is also true that by carefully reading the code, some might notice that the `if` and the `return` are at the same indentation level, **and** since you are **certain** the code has already been formatted, they can _safely_ assume there is an unseen `return` statement on the right.  
+It is also true that by carefully reading the code, some might notice that the `if` and 
+the `return` are at the same indentation level, **and** since they are **certain** the code has already been formatted, 
+they will "safely" assume there is an unseen `return` statement offscreen to the right.  
 
 **But honestly**, do you want to be thinking about how to keep your formatter from degrading the readability of your code when you are 12 layers deep in complex business logic?
