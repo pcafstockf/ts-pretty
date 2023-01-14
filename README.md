@@ -3,7 +3,7 @@
 [![Publish Actions](https://github.com/pcafstockf/ts-pretty/workflows/NPM%20Publish/badge.svg)](https://github.com/pcafstockf/ts-pretty/actions)
 [![npm version](https://badge.fury.io/js/ts-pretty.svg)](https://badge.fury.io/js/ts-pretty)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![OSS Lifecycle](https://img.shields.io/osslifecycle/pcafstockf/ts-pretty)]
+![OSS Lifecycle](https://img.shields.io/osslifecycle/pcafstockf/ts-pretty)
 
 Configurable prettier plugin which harnesses the TypeScript Compiler API.
 
