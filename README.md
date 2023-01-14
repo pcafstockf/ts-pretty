@@ -50,13 +50,13 @@ Additionally, ts-pretty allows you to optionally skip its own transformations.
 The combination of these two options allow you to effectively disable ts-pretty, although why would you want to :astonished: ?
 
 ## Options
-| Name        | Type  |    Default | Description                                   |
-|------------------|-------|--------:|:----------------------------------------------|
-|tspTsConfig       |string |process.env.TS_NODE_PROJECT `??`<br/>'./tsconfig.json' `??`<br />[hardcoded subset](https://github.com/pcafstockf/ts-pretty/blob/master/src/index.ts#L257) of tsconfig options | Path to a tsconfig.json file.                 |
-|tspTsFormat       |string |[hardcoded subset](https://github.com/pcafstockf/ts-pretty/blob/master/src/index.ts#L17) of `ts.FormatCodeSettings` | Path to a ts-format.json file.                |
-|tspOrganizeImports|boolean|false| [Removes unused, sorts by paths and names](https://devblogs.microsoft.com/typescript/announcing-typescript-2-8-2/#organize-imports).     |
-|tspDisable        |boolean|false| Do not perform any ts-pretty transformations. |
-|tspUseBuiltins    |boolean|false| Use a (appropriate) previously loaded parser. |
+| Name        | Type  |                                                                                                                                                                        Default | Description                                   |
+|------------------|-------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|:----------------------------------------------|
+|tspTsConfig       |string | process.env.TS_NODE_PROJECT `??`<br/>'./tsconfig.json' `??`<br />[hardcoded subset](https://github.com/pcafstockf/ts-pretty/blob/master/src/index.ts#L321) of tsconfig options | Path to a tsconfig.json file.                 |
+|tspTsFormat       |string |                                                            [hardcoded subset](https://github.com/pcafstockf/ts-pretty/blob/master/src/index.ts#L17) of `ts.FormatCodeSettings` | Path to a ts-format.json file.                |
+|tspOrganizeImports|boolean|                                                                                                                                                                          false | [Removes unused, sorts by paths and names](https://devblogs.microsoft.com/typescript/announcing-typescript-2-8-2/#organize-imports).     |
+|tspDisable        |boolean|                                                                                                                                                                          false | Do not perform any ts-pretty transformations. |
+|tspUseBuiltins    |boolean|                                                                                                                                                                          false | Use a (appropriate) previously loaded parser. |
 
 ## Usage
 ```bash
