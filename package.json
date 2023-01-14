@@ -25,7 +25,7 @@
 		"pretest": "npm run lint",
 		"test": "cross-env TS_NODE_PROJECT=tsconfig.spec.json node --require source-map-support/register --require ts-node/register/transpile-only ./node_modules/jasmine/bin/jasmine.js --config=./jasmine.json",
 		"coverage": "npm run clean && nyc -e .ts -x scripts -x \"**/*.ispec.ts\" -x \"**/*.spec.ts\" -x \"**/*.mock.ts\" --reporter=text-summary --reporter=lcov npm run test",
-		"release": "npm run build && node ./scripts/prep-pub-pkg.js && cpy README.md dist/ && cd dist && npm publish"
+		"release": "npm run build && node ./scripts/prep-pub-pkg.js && cp README.md dist/ && cd dist"
 	},
 	"repository": {
 		"type": "git",
