@@ -1,7 +1,11 @@
-import * as os from 'os';
 import * as fs from 'fs';
+import * as os from 'os';
 import {format} from 'prettier';
 
+/**
+ * Pretty basic unit tests, but they cover most of the ts-pretty plugin functionality.
+ * Would appreciate any PR for cases not covered.
+ */
 describe('ts-pretty', () => {
 	let originalTimeout = jasmine.DEFAULT_TIMEOUT_INTERVAL;
 	beforeAll(function () {
@@ -16,10 +20,12 @@ describe('ts-pretty', () => {
 		const input = fs.readFileSync(inputPath, 'utf8');
 		const txt = format(input, {
 			parser: 'ts-pretty',
+			tspTsConfig: 'ignore',
 			plugins: [require('../src')]
-		});
+		} as any);
 		expect(txt.split(/\r?\n/).length).toEqual(20);
 	});
+
 	it('should be able to also cleanup javascript', () => {
 		const inputPath = './fixtures/input/js-sample.js';
 		const input = fs.readFileSync(inputPath, 'utf8');
@@ -38,12 +44,13 @@ describe('ts-pretty', () => {
 		expect(ugly.split(/\r?\n/).length).toEqual(27);
 		expect(pretty.split(/\r?\n/).length).toEqual(20);
 	});
+
 	it('should be able to cleanup typescript', () => {
 		const inputPath = './fixtures/input/ts-sample.ts';
 		const input = fs.readFileSync(inputPath, 'utf8');
 		const nonOptimized = format(input, {
 			tspUseBuiltins: false,
-			tsbOptimizeImports: false,
+			tspOrganizeImports: false,
 			singleQuote: false,
 			useTabs: true,
 			endOfLine: os.EOL === '\n' ? 'crlf' : 'lf', // Do the opposite of the default
@@ -60,9 +67,9 @@ describe('ts-pretty', () => {
 			expect(/\r\n/.test(nonOptimized)).toBeFalse();
 		const optimized = format(input, {
 			tspUseBuiltins: false,
-			tsbOptimizeImports: true,
-			tsbTsconfig: './tsconfig.app.json',
-			tsbTsFormat: './fixtures/input/ts-format.json',
+			tspOrganizeImports: true,
+			tspTsConfig: './tsconfig.app.json',
+			tspTsFormat: './fixtures/input/ts-format.json',
 			useTabs: false,
 			endOfLine: os.EOL === '\n' ? 'lf' : 'crlf', // Do the default (for this os).
 			singleQuote: true,

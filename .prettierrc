@@ -4,6 +4,6 @@
   "singleQuote": true,
   "trailingComma": "none",
   "semi": true,
-  "tsbOptimizeImports": true,
-  "tsbUseBuiltins": false
+  "tspOrganizeImports": true,
+  "tspUseBuiltins": false
 }

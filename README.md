@@ -13,16 +13,18 @@ Opinions vary, but if you share these opinions, this might be the plugin for you
 * Formatting should allow code to be quickly absorbed / scanned, rather than [forcing a careful reading of each line](https://github.com/pcafstockf/ts-pretty/blob/master/fixtures/one-size-fits-all.md).
 
 ## Overview
-ts-pretty uses the [TypeScript Compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API) (built into TypeScript itself), to format TypeScript/JavaScript code.
+
+ts-pretty effectively replaces the generic TypeScript / JavaScript formatters built in to prettier, with the same TypeScript aware library used by
+[vscode](https://code.visualstudio.com/Docs/languages/typescript) (i.e. the [TypeScript Compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API)).
 
 The TypeScript Compiler API contains a `ts.Printer` service, which is a highly opinionated pretty printer with no real configurability. 
 However, it is written by the TypeScript team, obviously has an innate understanding of the language, and produces easily absorb-able / scan-able code.  
-`ts.LanguageService` is also built into TypeScript, and widely used by IDEs like [vscode](https://code.visualstudio.com/Docs/languages/typescript).
-The `ts.LanguageService` also provides a [highly configurable](https://thejohnfreeman.github.io/TypeScript/interfaces/formatcodeoptions.html) whitespace formatter.  
+`ts.LanguageService` is also built into TypeScript, and provides a [highly configurable](https://thejohnfreeman.github.io/TypeScript/interfaces/formatcodeoptions.html) whitespace formatter.  
 Please see `FormatCodeSettings` in [the ts definition file](https://github.com/microsoft/TypeScript/blob/main/lib/typescript.d.ts) 
 for a complete list of supported white space formatting options.
 
-ts-pretty feeds your code into `ts.Printer`, and then passes that output into `ts.LanguageService` to create the final output for prettier.
+ts-pretty feeds your code into `ts.Printer`, and then passes that output into `ts.LanguageService` to create the final output for prettier. 
+This is about as close as we are going to get to vscode, outside of vscode :-).
 
 By default, ts-pretty picks up existing prettier options such as `useTabs`, `tabWidth`, `singleQuote`, etc.
 These options (along with all `ts.FormatCodeSettings` options) can be overridden using a json5 configuration file (ts-format.json) whose schema is `ts.FormatCodeSettings`.  

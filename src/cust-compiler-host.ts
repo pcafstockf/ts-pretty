@@ -7,11 +7,12 @@ import ts, {TextChange} from 'typescript';
  * Thanks to ts-morph, prettier-plugin-organize-imports, and the TypeScript team for helping me finally wrap my head around CompilerHost/LanguageServiceHost
  */
 export class CustCompilerHost implements ts.CompilerHost {
-	constructor(options: ts.CompilerOptions) {
+	constructor() {
 		this.files = new Map<string, string>();
 		this.fileVersions = new Map<string, number>();
 		this.sourceFiles = new Map<string, ts.SourceFile>();
 	}
+
 	protected files: Map<string, string>;
 	protected fileVersions: Map<string, number>;
 	protected sourceFiles: Map<string, ts.SourceFile>;
@@ -61,24 +62,36 @@ export class CustCompilerHost implements ts.CompilerHost {
 		return content;
 	}
 
-	public getSourceFile(fileName: string, languageVersionOrOptions: ts.ScriptTarget | ts.CreateSourceFileOptions, onError?: (message: string) => void, shouldCreateNewSourceFile?: boolean): ts.SourceFile | undefined {
+	public getSourceFile(fileName: string, languageVersionOrOptions: ts.ScriptTarget | ts.CreateSourceFileOptions, onError?: (message: string) => void): ts.SourceFile | undefined {
 		if (this.sourceFiles.has(fileName))
 			return this.sourceFiles.get(fileName);
-		const text = this.readFile(fileName);
-		if (typeof text === 'string') {
-			const result = ts.createSourceFile(fileName, text, languageVersionOrOptions);
-			this.sourceFiles.set(fileName, result);
-			return result;
+		try {
+			const text = this.readFile(fileName);
+			if (typeof text === 'string') {
+				const result = ts.createSourceFile(fileName, text, languageVersionOrOptions);
+				this.sourceFiles.set(fileName, result);
+				return result;
+			}
+		}
+		catch (err) {
+			if (onError && typeof (err as any).message === 'string')
+				onError((err as any).message as string);
 		}
 		return undefined;
 	}
 
-	public writeFile(fileName: string, text: string, writeByteOrderMark?: boolean, onError?: ((message: string) => void) | undefined, sourceFiles?: readonly ts.SourceFile[] | undefined, data?: ts.WriteFileCallbackData | undefined): void {
+	public writeFile(fileName: string, text: string, writeByteOrderMark?: boolean, onError?: ((message: string) => void) | undefined): void {
 		this.files.set(fileName, text);
 		if (this.sourceFiles.has(fileName)) {
-			const sf = this.sourceFiles.get(fileName);
-			const result = ts.createSourceFile(fileName, text, sf!.languageVersion);
-			this.sourceFiles.set(fileName, result);
+			const sf = this.sourceFiles.get(fileName)!;
+			try {
+				const result = ts.createSourceFile(fileName, text, sf.languageVersion);
+				this.sourceFiles.set(fileName, result);
+			}
+			catch (err) {
+				if (onError && typeof (err as any).message === 'string')
+					onError((err as any).message as string);
+			}
 		}
 		const newVers = (this.fileVersions.get(fileName) ?? 1) + 1;
 		this.fileVersions.set(fileName, newVers);

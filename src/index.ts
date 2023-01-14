@@ -1,19 +1,22 @@
 // noinspection JSUnusedGlobalSymbols
 
-import * as os from 'os';
-import * as path from 'path';
-import * as fs from 'fs';
 import {randomUUID} from 'crypto';
+import * as fs from 'fs';
 import {parse as json5Parse} from 'json5';
 import cloneDeep from 'lodash/cloneDeep';
 import merge from 'lodash/merge';
-import ts, {CompilerOptions, JsxEmit, ModuleDetectionKind, ModuleKind, ModuleResolutionKind, ScriptTarget} from 'typescript';
+import * as os from 'os';
+import * as path from 'path';
 import type {Parser, Printer} from 'prettier';
 import {AstPath, Doc, format, ParserOptions, SupportOption} from 'prettier';
+import ts from 'typescript';
 import {CustCompilerHost} from './cust-compiler-host';
 import {CustLangServiceHost} from './cust-lang-service-host';
 
 
+/**
+ * Declare a fallback set of formatting options that are appealing to me personally :-)
+ */
 export const DefaultFormatCodeSettings: ts.FormatCodeSettings = {
 	baseIndentSize: 0,
 	newLineCharacter: os.EOL,
@@ -45,6 +48,108 @@ export const DefaultFormatCodeSettings: ts.FormatCodeSettings = {
 	semicolons: ts.SemicolonPreference.Insert
 };
 
+/**
+ * These are the "enhanced" options this plugin supports.
+ * NOTE:
+ *  There is some intersection between @see TspPluginOptions, @see options, and @see defaultOptions that MUST be *manually* maintained.
+ *  It's not very elegant, but not sure how else to manage it.
+ */
+export interface TspPluginOptions {
+	/**
+	 * Whether to perform ts-pretty transformations.
+	 * Keep this property name and comment aligned with @see options.tspDisable.description
+	 */
+	tspDisable?: boolean;
+	/**
+	 * Invoke previously loaded parser and use its output as input to ts-pretty.
+	 * Keep this property name and comment aligned with @see options.tspUseBuiltins.description
+	 */
+	tspUseBuiltins?: boolean;
+	/**
+	 * Filepath to a tsconfig.json file.
+	 *  If not defined, defaults to process.env.TS_NODE_PROJECT,
+	 *  otherwise ./tsconfig.json (if present but you want to ignore it, pass "ignore"),
+	 *  otherwise a hardcoded set of tsconfig options.
+	 * Keep this property name and comment aligned with @see options.tspTsConfig.description
+	 */
+	tspTsConfig?: string | null;
+	/**
+	 * json5 file containing ts.FormatCodeSettings overrides.
+	 * Keep this property name and comment aligned with @see options.tspTsFormat.description
+	 */
+	tspTsFormat?: string;
+	/**
+	 * Organize TypeScript imports using ts.LanguageService.organizeImports
+	 * Keep this property name and comment aligned with @see options.tspOrganizeImports.description
+	 */
+	tspOrganizeImports?: boolean;
+}
+
+/**
+ * These are the *types* of the "enhanced" options this plugin supports.
+ * NOTE:
+ *  There is some intersection between @see TspPluginOptions, @see options, and @see defaultOptions that MUST be *manually* maintained.
+ *  It's not very elegant, but not sure how else to manage it.
+ */
+export const options: Record<keyof TspPluginOptions, SupportOption> = {
+	tspDisable: {
+		type: 'boolean',    // keep this in sync with the type of @see TspPluginOptions.tspDisable
+		category: 'TypeScript',
+		since: '1.16.4',
+		default: false,    // keep this in sync with the value of @see defaultOptions.tspDisable
+		description: 'Whether to perform ts-pretty transformations.',
+	},
+	tspUseBuiltins: {
+		type: 'boolean',    // keep this in sync with the type of @see TspPluginOptions.tspUseBuiltins
+		category: 'TypeScript',
+		since: '1.16.4',
+		default: false,    // keep this in sync with the value of @see defaultOptions.tspUseBuiltins
+		description: 'Invoke previously loaded parser and use its output as input to ts-pretty.',
+	},
+	tspTsConfig: {
+		type: 'path',    // keep this in sync with the type of @see TspPluginOptions.tspTsConfig (e.g. 'path' is filepath is string).
+		category: 'TypeScript',
+		since: '1.16.4',
+		// default value is undefined in keeping with @see defaultOptions.tspTsFormat
+		description: 'Filepath to a tsconfig.json file.\n\tIf not defined, defaults to process.env.TS_NODE_PROJECT,\n\totherwise ./tsconfig.json (if present but you want to ignore it, pass "ignore"),\n\totherwise a hardcoded set of tsconfig options.'
+	},
+	tspTsFormat: {
+		type: 'path',    // keep this in sync with the type of @see TspPluginOptions.tspTsFormat (e.g. 'path' is filepath is string).
+		category: 'TypeScript',
+		since: '1.16.4',
+		// default value is undefined in keeping with @see defaultOptions.tspTsFormat
+		description: 'json5 file containing ts.FormatCodeSettings overrides',
+	},
+	tspOrganizeImports: {
+		type: 'boolean',    // keep this in sync with the type of @see TspPluginOptions.tspOrganizeImports
+		category: 'TypeScript',
+		since: '1.16.4',
+		default: false,    // keep this in sync with the value of @see defaultOptions.tspOrganizeImports
+		description: 'Organize TypeScript imports using ts.LanguageService.organizeImports',
+	},
+};
+
+/**
+ * These are the default values for the "enhanced" options this plugin supports.
+ * NOTE:
+ *  There is some intersection between @see TspPluginOptions, @see options, and @see defaultOptions that MUST be *manually* maintained.
+ *  It's not very elegant, but not sure how else to manage it.
+ */
+export const defaultOptions = {
+	tspDisable: false,      // keep this in sync with the type of @see options.tspDisable
+	tspUseBuiltins: false,      // keep this in sync with the type of @see options.tspUseBuiltins
+	tspOrganizeImports: false      // keep this in sync with the type of @see options.tspOrganizeImports
+	// Other supported options default to undefined.
+};
+
+/**
+ * An unofficial TypeScript utility type that is the inverse of ReadOnly.
+ */
+type Writeable<T> = { -readonly [P in keyof T]: T[P] };
+
+/**
+ * Our prettier ast is simply a single node for the entire source file.
+ */
 interface TscNode {
 	type: 'tsc-ast';
 	body: string;
@@ -53,67 +158,28 @@ interface TscNode {
 	end: number;
 }
 
-export const defaultOptions = {
-	tspDisable: false,
-	tspUseBuiltins: false,
-	tspOrganizeImports: false
-};
-
-
-export interface PluginOptions {
-	tspDisable?: boolean;
-	tspUseBuiltins?: boolean;
-	tspTsconfig?: string;
-	tspTsFormat?: string;
-	tspOrganizeImports?: boolean;
-}
-
-export const options: Record<keyof PluginOptions, SupportOption> = {
-	tspDisable: {
-		type: 'boolean',
-		category: 'TypeScript',
-		since: '1.16.4',
-		default: false,
-		description: 'ts-pretty will not perform any transformations.',
-	},
-	tspUseBuiltins: {
-		type: 'boolean',
-		category: 'TypeScript',
-		since: '1.16.4',
-		default: false,
-		description: 'If true, the previously loaded parser output will be piped into ts-pretty.',
-	},
-	tspTsconfig: {
-		type: 'path',
-		category: 'TypeScript',
-		since: '1.16.4',
-		description: 'Filepath to a tsconfig.json file (if not present, defaults to process.env.TS_NODE_PROJECT if present, otherwise ./tsconfig.json, otherwise a hardcoded set of tsconfig options)',
-	},
-	tspTsFormat: {
-		type: 'path',
-		category: 'TypeScript',
-		since: '1.16.4',
-		description: 'json5 file containing ts.FormatCodeSettings overrides',
-	},
-	tspOrganizeImports: {
-		type: 'boolean',
-		category: 'TypeScript',
-		since: '1.16.4',
-		default: false,
-		description: 'Organize TypeScript imports using ts.LanguageService.organizeImports',
-	},
-};
-
-type Writeable<T> = { -readonly [P in keyof T]: T[P] };
-
+/**
+ * This is the parser we use for all our 'supported' parser names (e.g. typescript, acorn, babel, etc.).
+ */
 class TypeScriptParser {
+	/**
+	 * The type of nodes returned by this parser.
+	 * @see TscNode
+	 */
 	readonly astFormat = 'tsc-ast';
 
 	constructor() {
 	}
+
 	formatOverrides?: ts.FormatCodeSettings;
 
-	protected makeFormatCodeSettings(options: ParserOptions<TscNode> & PluginOptions): ts.FormatCodeSettings {
+	/**
+	 * Merge together a final ts.FormatCodeSettings for configuring the whitespace of a file.
+	 * Starts with my own preferred defaults (@see DefaultFormatCodeSettings),
+	 * then merge in prettier specific options,
+	 * and finally override with anything found in a ts-format.json (e.g. --tspTsFormat) file (if one was specified).
+	 */
+	protected makeFormatCodeSettings(options: ParserOptions<TscNode> & TspPluginOptions): ts.FormatCodeSettings {
 		const format = cloneDeep(DefaultFormatCodeSettings) as Writeable<ts.FormatCodeSettings>;
 		switch (options.endOfLine) {
 			case 'crlf':
@@ -161,44 +227,29 @@ class TypeScriptParser {
 	}
 
 	/**
-	 * THIS METHOD IS A HACK!
-	 * I would really like to find a better way!
-	 * The ts.Printer builtin to TypeScript does *mostly* what we want, but there is an existing (and realistic)
-	 * prettier expectation, that users can specify single vs double quote transformations.
-	 * But bottom line is that ts.Printer simply does not support that.
-	 * Worse, the hack we do use is not "public".  Hence, we isolate it into this one method.
+	 * THIS METHOD IS A HACK!  I would really like to find a better way!
+	 * The ts.Printer builtin to TypeScript does *mostly* what we want but hardcodes the use of single vs double quotes.
+	 * There is an existing (and realistic) prettier expectation, that users can specify single vs double quote transformations.
+	 * But the bottom line is that ts.Printer simply does not support that.
+	 * Worse, the hack we use below is *not* "public".  Hence, we isolate it into this one method.
 	 * StringLiterals have an internal property called 'singleQuote'.
-	 * Unfortunately, the Printer also has "optimizations" where it re-uses the text of the source file whenever it can.
-	 * This "optimization" prevents us from converting quotes in some cases (mostly in import statements).
+	 * Unfortunately, the ts.Printer also has "optimizations" where it re-uses the text of the source file whenever it can, meaning it will keep whatever type of quote was already in the source file.
+	 * This *prevents* us from converting quotes (mostly in import statements).
 	 * So...
-	 * We set the flag on all StringLiteral nodes in the source file, *and* patch ts.getLiteralText to ignore the sourceFile text *when* getting the text for a StringLiteral.
-	 * This results in StringLiterals being printed from the StringLiteral node itself rather than from the actual SourceFile text.
+	 * We set the flag on all StringLiteral nodes in the source file, *and* patch ts.getLiteralText (an exposed but undocumented global) to ignore the sourceFile text *when* getting the text for a StringLiteral.
+	 * This results in StringLiterals being printed from the StringLiteral node itself rather than from the actual SourceFile text (see the ts.Printer optimization comment above).
+	 * Bottom line...
+	 * This method traverses the TypeScript ast nodes and patches up (as best it can) the StringLiteral nodes to have the "right" boolean value set for StringLiteral.singleQuote.
+	 * This method also temporarily patches the ts.getLiteralText global (mentioned above) while ts.Printer renders the tree.
+	 * Net result is we end up with the ability to control single vs double quotes in the source code.
 	 */
-	protected tsPrintSourceFile(sourceFile: ts.SourceFile, options: ParserOptions<TscNode> & PluginOptions) {
+	protected tsPrintSourceFile(sourceFile: ts.SourceFile, options: ParserOptions<TscNode> & TspPluginOptions) {
 		const printer = ts.createPrinter();
-		let singleQuote: boolean | undefined;
-		// noinspection SuspiciousTypeOfGuard
-		if (typeof options.singleQuote === 'boolean')
-			singleQuote = options.singleQuote;
-		else if (options.singleQuote === null || options.singleQuote === '0' || options.singleQuote === 0)
-			singleQuote = false;
-		else {
-			// noinspection SuspiciousTypeOfGuard
-			if (typeof options.singleQuote === 'string') {
-				const s = (options.singleQuote as string).toLowerCase();
-				if (s === 'false' || s === 'null' || s === 'no')
-					singleQuote = false;
-				else if (options.singleQuote)
-					singleQuote = true;
-			}
-			else if (options.singleQuote)
-				singleQuote = true;
-		}
 
 		function visitNode(node: ts.Node) {
 			switch (node.kind) {
 				case ts.SyntaxKind.StringLiteral:
-					(node as any).singleQuote = singleQuote;
+					(node as any).singleQuote = options.singleQuote;
 					break;
 				default:
 					break;
@@ -206,106 +257,131 @@ class TypeScriptParser {
 			ts.forEachChild(node, visitNode);
 		}
 
-		if (typeof singleQuote === 'boolean')
+		// Patch up the tree
+		if (options.singleQuote)
 			visitNode(sourceFile as ts.Node);
+		// Temporarily patch the printing of StringLiteral nodes
 		const getLiteralTextWrapper = (ts as any).getLiteralText;
 		(ts as any).getLiteralText = function getLiteralText(node: ts.Node, sourceFile: ts.SourceFile, flags: number) {
 			if (node.kind === ts.SyntaxKind.StringLiteral)
-				return getLiteralTextWrapper(node, null, flags);
-			return getLiteralTextWrapper(node, sourceFile, flags);
+				return getLiteralTextWrapper(node, null, flags) as string;
+			return getLiteralTextWrapper(node, sourceFile, flags) as string;
 		};
+		// Print the ast of the source file, ensuring we restore/remove the StringLiteral patch when we are done.
 		try {
-			return printer.printNode(ts.EmitHint.SourceFile, sourceFile!, sourceFile!);
+			return printer.printNode(ts.EmitHint.SourceFile, sourceFile, sourceFile);
 		}
 		finally {
 			(ts as any).getLiteralText = getLiteralTextWrapper;
 		}
 	}
 
-	parse(text: string, options: ParserOptions<TscNode> & PluginOptions): TscNode {
+	/**
+	 * @inheritDoc
+	 * This is the core method of every prettier plugin parser.
+	 * NOTE:
+	 *  If the --tspUseBuiltins options was set, the 'text' provided to this parse method will be the output from the previously registered plugin.
+	 */
+	parse(text: string, options: ParserOptions<TscNode> & TspPluginOptions): TscNode {
 		// Remember, each file can potentially have different options.
 		const formatOpts = this.makeFormatCodeSettings(options);
 
-		let searchDir = './';
-		let tsConfigName = undefined;
-		if (process.env.TS_NODE_PROJECT) {
-			searchDir = path.dirname(process.env.TS_NODE_PROJECT);
-			tsConfigName = path.basename(process.env.TS_NODE_PROJECT);
+		let tsConfigPath: string | undefined | null = null;
+		// Find a tsconfig.json file to load compiler options from (if possible).
+		if (options.tspTsConfig !== 'ignore') {
+			let searchDir = './';
+			let tsConfigName;
+			if (process.env.TS_NODE_PROJECT) {
+				searchDir = path.dirname(process.env.TS_NODE_PROJECT);
+				tsConfigName = path.basename(process.env.TS_NODE_PROJECT);
+			}
+			if (options.tspTsConfig) {
+				searchDir = path.dirname(options.tspTsConfig);
+				tsConfigName = path.basename(options.tspTsConfig);
+			}
+			tsConfigPath = ts.findConfigFile(
+				searchDir,
+				ts.sys.fileExists,
+				tsConfigName
+			);
 		}
-		if (options.tspTsconfig) {
-			searchDir = path.dirname(options.tspTsconfig);
-			tsConfigName = path.basename(options.tspTsconfig);
-		}
-		const tsConfigPath = ts.findConfigFile(
-			searchDir,
-			ts.sys.fileExists,
-			tsConfigName
-		);
 		let tsCompilerOptions: ts.CompilerOptions;
 		if (tsConfigPath) {
-			const configFile = ts.readConfigFile(tsConfigPath!, ts.sys.readFile);
+			const configFile = ts.readConfigFile(tsConfigPath, ts.sys.readFile);
 			const configOptions = ts.parseJsonConfigFileContent(
 				configFile.config,
 				ts.sys,
-				path.dirname(tsConfigPath!)
+				path.dirname(tsConfigPath)
 			);
 			tsCompilerOptions = configOptions.options;
 		}
 		else {
-			// Very likely not a typescript project, and keep in mind we are not emitting/compiling!
-			// These defaults were taken from a combination of tsc --init and my own speculation about what would be useful for supporting a wide variety of *javascript* code.
+			// We could not find a tsconfig.json file, so this is likely not a typescript project, and keep in mind we are not emitting/compiling anyway!
+			// So, use these defaults were taken from a combination of tsc --init and my own speculation about what would be useful for supporting a wide variety of *javascript* code.
 			tsCompilerOptions = {
 				// Set the JavaScript language version for emitted JavaScript and include compatible library declarations.
-				"target": ts.ScriptTarget.ESNext,
+				'target': ts.ScriptTarget.ESNext,
 				// Specify what JSX code is generated
-				"jsx": ts.JsxEmit.Preserve,
+				'jsx': ts.JsxEmit.Preserve,
 				// Enable experimental support for TC39 stage 2 draft decorators.
-				"experimentalDecorators": true,
+				'experimentalDecorators': true,
 				// Control what method is used to detect module-format JS files.
-				"moduleDetection": ts.ModuleDetectionKind.Auto,
+				'moduleDetection': ts.ModuleDetectionKind.Auto,
 				// Specify what module code is generated.
-				"module": ts.ModuleKind.CommonJS,
+				'module': ts.ModuleKind.CommonJS,
 				// Specify how TypeScript looks up a file from a given module specifier.
-				"moduleResolution": ts.ModuleResolutionKind.NodeJs,
+				'moduleResolution': ts.ModuleResolutionKind.NodeJs,
 				// Enable importing .json files.
-				"resolveJsonModule": true,
+				'resolveJsonModule': true,
 				// Allow JavaScript files to be a part of your program.
-				"allowJs": true,
+				'allowJs': true,
 				// disable emitting files from a compilation.
-				"noEmit": true,
+				'noEmit': true,
 				// Emit additional JavaScript to ease support for importing CommonJS modules.
-				"esModuleInterop": true,
+				'esModuleInterop': true,
 				// Disable resolving symlinks to their realpath. This correlates to the same flag in node.
-				"preserveSymlinks": true,
+				'preserveSymlinks': true,
 				// Ensure that casing is correct in imports.
-				"forceConsistentCasingInFileNames": true,
+				'forceConsistentCasingInFileNames': true,
 				// Enable all strict type-checking options.
-				"strict": false,
+				'strict': false,
 				// Skip type checking all .d.ts files.
-				"skipLibCheck": true
+				'skipLibCheck': true
 			} as ts.CompilerOptions;
 		}
-		const host = new CustCompilerHost(tsCompilerOptions);
+		// Remember, ts.CompilerHost is what the TypeScriptCompiler API uses as an adapter to read and write the native file system.
+		const host = new CustCompilerHost();
 		let filePath = options.filepath;
+		// Normally we have a file to format, but if we are called programatically (via prettier.format like we do in testing), there will not be a file.
 		if (filePath) {
 			if (fs.existsSync(filePath))
 				filePath = host.getCanonicalFileName(filePath);
 		}
-		else
+		else {
+			// No file path, but the compiler needs one, so make one up.
+			// Our ts.CompilerHost reads from disk, but always writes to memory, so it does not matter that the file is non-existant.
 			filePath = path.join(tsCompilerOptions.baseUrl ?? './', randomUUID() + '.ts');
+		}
 		host.writeFile(filePath, text);
+		// Our ts.LanguageServiceHost just delegates to the ts.Program and ts.CompilerHost we create, so all this is still happening in memory only.
 		const languageService = ts.createLanguageService(new CustLangServiceHost(host, ts.createProgram([filePath], tsCompilerOptions, host)));
-		let sourceFile = host.getSourceFile(filePath, tsCompilerOptions.target ?? ts.ScriptTarget.Latest);
-		let cleanedText = this.tsPrintSourceFile(sourceFile!, options);
+		// Get the "source" file that we just "wrote" (host.writeFile) above.
+		const sourceFile = host.getSourceFile(filePath, tsCompilerOptions.target ?? ts.ScriptTarget.Latest);
+		// Use our specialized method to invoke ts.Printer.printNode.
+		const cleanedText = this.tsPrintSourceFile(sourceFile!, options);
+		// Write a cleaned up file (sans import optimizations and whitespace cleanup) (again all to memory).
 		host.writeFile(filePath, cleanedText);
 		if (options.tspOrganizeImports) {
+			// This little bypass inspired by the prettier-plugin-organize-imports project.
 			if ((!cleanedText.includes('// organize-imports-ignore')) && (!cleanedText.includes('// tslint:disable:ordered-imports'))) {
 				const fileChanges = languageService.organizeImports({fileName: filePath, type: 'file', mode: ts.OrganizeImportsMode.All}, formatOpts, {});
 				fileChanges.forEach(v => host.applyTextChanges(v.fileName, v.textChanges));
 			}
 		}
+		// Apply user requested whitespace formatting.
 		const textChanges = languageService.getFormattingEditsForDocument(filePath, formatOpts);
 		const finalText = host.applyTextChanges(filePath, textChanges);
+		// Return the formatted text "file" as a cleaned up single ast node.
 		return {
 			type: 'tsc-ast',
 			source: text,
@@ -315,43 +391,25 @@ class TypeScriptParser {
 		};
 	}
 
+	/* istanbul ignore next */
 	locStart(node: TscNode): number {
 		return node.start;
 	}
-
+	/* istanbul ignore next */
 	locEnd(node: TscNode): number {
 		return node.end;
 	}
 }
 
+/**
+ * *The* ts-pretty parser.
+ */
+const parserInstance = new TypeScriptParser();
 
-class TypeScriptPrinter {
-	constructor() {
-	}
-
-	/**
-	 * @param path  An object, which can be used to access nodes in the AST. It’s a stack-like data structure that maintains the current state of the recursion.
-	 *              It is called “path” because it represents the path to the current node from the root of the AST.
-	 *              The current node is returned by path.getValue().
-	 * @param options   A persistent object, which contains global options and which a plugin may mutate to store contextual data.
-	 */
-	print(path: AstPath<TscNode>, options: ParserOptions<TscNode>): Doc {
-		const node = path.getValue();
-		switch (node.type) {
-			case 'tsc-ast':
-				return node.body;
-			default:
-				console.error('Unknown tsc node:', node);
-				return node.source;
-		}
-	}
-}
-
-
-export const printers: Record<string, Printer<TscNode>> = {
-	'tsc-ast': new TypeScriptPrinter()
-};
-
+/**
+ * Part of the prettier plugin API, we export these 'languages' collected from many samples across the internet
+ * which hopefully accurately represent the TypeScript/JavaScript languages that the TypeScript Compiler API can handle.
+ */
 export const languages = [
 	{
 		name: 'TypeScript',
@@ -409,8 +467,9 @@ export const languages = [
 		parsers: ['babel', 'espree'],
 	},
 ];
+// Make a unique set of all the 'standard' prettier parser names we think we can replace.
 const knownParsers = new Set<string>(languages.map(l => l.parsers).flat(10));
-
+// Rename the builtin parsers so we can replace them, but still have a reference to them when a caller asks for --tspUseBuiltins
 const {parsers: babelParsers} = require('prettier/parser-babel');
 const builtIns = {
 	parsers: {
@@ -432,17 +491,23 @@ const builtIns = {
 	}
 };
 
-const parserInstance = new TypeScriptParser();
+/**
+ * Part of the prettier plugin API, actually build wrapper parsers (one for each of the @see languages we support).
+ * The wrapper handles invoking the previously registered parser for a language (if so requested), and then
+ * optionally invokes the actual ts-pretty parser to do it's thing.
+ */
 export const parsers = Array.from(knownParsers).reduce((parsers, parserName) => {
 	parsers[parserName] = {
+		/* istanbul ignore next */
 		locStart(node: TscNode): number {
 			return parserInstance.locStart(node);
 		},
+		/* istanbul ignore next */
 		locEnd(node: TscNode): number {
 			return parserInstance.locEnd(node);
 		},
 		parse(text: string, parsersInPrettierV2OrOptionsInPrettierV3: { [_: string]: Parser } | ParserOptions<TscNode>, optionsInPrettierV2AndV3?: ParserOptions<TscNode>): TscNode {
-			let options: ParserOptions<TscNode> & PluginOptions;
+			let options: ParserOptions<TscNode> & TspPluginOptions;
 			if (typeof (parsersInPrettierV2OrOptionsInPrettierV3 as any)[parserName] === 'function')
 				options = optionsInPrettierV2AndV3 as any;
 			else
@@ -470,3 +535,40 @@ export const parsers = Array.from(knownParsers).reduce((parsers, parserName) => 
 	};
 	return parsers;
 }, {} as Record<string, Parser<TscNode>>);
+
+/**
+ * Our "printer" is really simple.
+ * We take the single node that the parser outputs and return the formatted string it contains.
+ */
+class TypeScriptPrinter {
+	constructor() {
+	}
+
+	/**
+	 * @param path  An object, which can be used to access nodes in the AST. It’s a stack-like data structure that maintains the current state of the recursion.
+	 *              It is called “path” because it represents the path to the current node from the root of the AST.
+	 *              The current node is returned by path.getValue().
+	 * @param options   A persistent object, which contains global options and which a plugin may mutate to store contextual data.
+	 */
+	print(path: AstPath<TscNode>, options: ParserOptions<TscNode>): Doc {
+		const node = path.getValue();
+		switch (node.type) {
+			case 'tsc-ast':
+				// This is the only node type we declare, so prettier will never send us anything else.
+				return node.body;
+			/* istanbul ignore next */
+			default:
+				/* istanbul ignore next */
+				console.error('Unknown tsc node:', node);
+				/* istanbul ignore next */
+				return node.source;
+		}
+	}
+}
+
+/**
+ * Part of the prettier plugin API, we only export a single 'printer' because we only generate a single ast node type.
+ */
+export const printers: Record<string, Printer<TscNode>> = {
+	'tsc-ast': new TypeScriptPrinter()
+};
