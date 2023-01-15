@@ -17,7 +17,7 @@ import {CustLangServiceHost} from './cust-lang-service-host';
 /**
  * Declare a fallback set of formatting options that are appealing to me personally :-)
  */
-export const DefaultFormatCodeSettings: ts.FormatCodeSettings = {
+const DefaultFormatCodeSettings: ts.FormatCodeSettings = {
 	baseIndentSize: 0,
 	newLineCharacter: os.EOL,
 	// Space takes up at least twice as much disk space as a tab :-)

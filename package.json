@@ -1,6 +1,6 @@
 {
 	"name": "ts-pretty",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Configurable prettier plugin which harnesses the TypeScript Compiler API",
 	"author": "Frank Stock",
 	"license": "MIT",
