@@ -6,9 +6,13 @@ const tsConfig = './tsconfig.app.json';
 module.exports = {
 	entry: './src/index.ts',
 	mode: 'production',
+	// devtool: 'inline-source-map',
 	output: {
 		path: path.resolve('dist'),
 		filename: 'index.js',
+		library: {
+			type: 'commonjs',
+		},
 	},
 	module: {
 		rules: [

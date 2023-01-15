@@ -203,13 +203,8 @@ class TypeScriptParser {
 		if (typeof options.tabWidth === 'number')
 			format.indentSize = format.tabSize = options.tabWidth;
 		// noinspection SuspiciousTypeOfGuard
-		if (typeof options.useTabs === 'boolean') {
+		if (typeof options.useTabs === 'boolean')
 			format.convertTabsToSpaces = !options.useTabs;
-			if (format.convertTabsToSpaces)
-				// noinspection SuspiciousTypeOfGuard
-				if (typeof options.tabWidth === 'number')
-					format.indentSize = format.tabSize = 1; // ts always uses a single tab (it's up to the editor to display the tab as x number of spaces).
-		}
 		else
 			delete format.convertTabsToSpaces;
 		// noinspection SuspiciousTypeOfGuard
